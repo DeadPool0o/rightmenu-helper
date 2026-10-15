@@ -31,6 +31,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        settingsView?.refreshExtensionStatus()
+    }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showWindow(); return false
     }
@@ -63,7 +66,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func showWindow() {
         guard window != nil else { return }
         NSApp.activate(ignoringOtherApps: true); window.makeKeyAndOrderFront(nil)
+        settingsView.refreshExtensionStatus()
+        let setupKey = "finderExtensionSetupPromptShown"
+        if !FIFinderSyncController.isExtensionEnabled && !UserDefaults.standard.bool(forKey: setupKey) {
+            UserDefaults.standard.set(true, forKey: setupKey)
+            let alert = NSAlert()
+            alert.messageText = "还需要启用 Finder 扩展"
+            alert.informativeText = "安装后，请在系统设置中启用“右键助手”的 Finder 扩展，才能显示新建文件、复制移动、文件图标等右键菜单。\n\n“用 ChatGPT 打开（右键助手）”是单独的系统服务，出现这一项不代表 Finder 扩展已启用。"
+            alert.addButton(withTitle: "打开 Finder 扩展设置")
+            alert.addButton(withTitle: "稍后")
+            if alert.runModal() == .alertFirstButtonReturn { openFinderExtensionSettings() }
+        }
     }
+    func openFinderExtensionSettings() { FIFinderSyncController.showExtensionManagementInterface() }
     func share(_ urls: [URL]) {
         let picker = NSSharingServicePicker(items: urls); sharingPicker = picker
         if let button = statusItem.button {

@@ -27,7 +27,7 @@ for bundle in (app, ext):
 def plist(path, value):
     path.write_bytes(plistlib.dumps(value, sort_keys=False))
 
-base = {"CFBundleInfoDictionaryVersion": "6.0", "CFBundleVersion": "16", "CFBundleShortVersionString": "0.2.11",
+base = {"CFBundleInfoDictionaryVersion": "6.0", "CFBundleVersion": "17", "CFBundleShortVersionString": "0.2.12",
         "LSMinimumSystemVersion": "13.0", "CFBundleSupportedPlatforms": ["MacOSX"], "LSUIElement": True}
 services = [{"NSMenuItem": {"default": "用 ChatGPT 打开（右键助手）"}, "NSMessage": "openInChatGPT",
              "NSPortName": "RightClickAssistant", "NSSendTypes": ["NSFilenamesPboardType", "public.file-url"],

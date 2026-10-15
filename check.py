@@ -3,6 +3,7 @@ import pathlib
 import shutil
 import struct
 import subprocess
+import sys
 import zipfile
 ROOT = pathlib.Path(__file__).resolve().parent
 build = ROOT / "build"
@@ -38,3 +39,7 @@ for name in ["Word.docx", "Excel.xlsx", "PowerPoint.pptx"]:
         assert "[Content_Types].xml" in z.namelist()
         assert "_rels/.rels" in z.namelist()
 print("Office template ZIP structures validated.")
+subprocess.run(["/usr/bin/xcrun", "swift", "-module-cache-path", str(build / "ModuleCache"),
+                "-framework", "JavaScriptCore", str(ROOT / "Tests/InstallerChecks.swift"),
+                str(ROOT / "Packaging/CheckInstallation.js")], check=True)
+subprocess.run([sys.executable, str(ROOT / "Tests/InstallerLauncherChecks.py")], check=True)

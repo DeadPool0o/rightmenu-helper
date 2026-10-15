@@ -2,11 +2,14 @@
 <installer-gui-script minSpecVersion="2">
   <title>右键助手 @VERSION@</title>
   <organization>local.kingdee.RightClickAssistant</organization>
-  <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+  <options customize="never" require-scripts="true" hostArchitectures="arm64,x86_64"/>
   <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
-  <volume-check>
+  <volume-check script="checkExistingInstallation()">
     <allowed-os-versions><os-version min="@MINIMUM_OS@"/></allowed-os-versions>
   </volume-check>
+  <script><![CDATA[
+@INSTALLATION_SCRIPT@
+  ]]></script>
   <welcome file="Welcome.html" mime-type="text/html"/>
   <readme file="ReadMe.html" mime-type="text/html"/>
   <conclusion file="Conclusion.html" mime-type="text/html"/>

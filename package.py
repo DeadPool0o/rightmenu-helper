@@ -81,14 +81,16 @@ def create_packages(info, work):
     component = work / "RightClickAssistant.pkg"
     run("/usr/bin/pkgbuild", "--root", stage, "--component-plist", components,
         "--identifier", PACKAGE_ID, "--version", version, "--install-location", "/Applications",
-        "--ownership", "recommended", component)
+        "--ownership", "recommended", "--scripts", ROOT / "Packaging/Scripts", component)
 
     for source in (ROOT / "Packaging/Resources").glob("*.html"):
         resources.joinpath(source.name).write_text(
             source.read_text().replace("@VERSION@", version).replace("@MINIMUM_OS@", minimum))
     distribution = work / "Distribution.xml"
     distribution.write_text((ROOT / "Packaging/Distribution.xml").read_text()
-                            .replace("@VERSION@", version).replace("@MINIMUM_OS@", minimum))
+                            .replace("@INSTALLATION_SCRIPT@", (ROOT / "Packaging/CheckInstallation.js").read_text())
+                            .replace("@VERSION@", version).replace("@BUILD_NUMBER@", info["CFBundleVersion"])
+                            .replace("@MINIMUM_OS@", minimum))
     output = ROOT / "dist"
     output.mkdir(exist_ok=True)
     stem = f"RightClickAssistant-{version}-macos-universal"
@@ -109,6 +111,9 @@ def create_packages(info, work):
         raise RuntimeError("Installer destination must be /Applications")
     if package_info.attrib["identifier"] != PACKAGE_ID or package_info.attrib["version"] != version:
         raise RuntimeError("Installer identity or version does not match the application")
+    postinstall = expanded / "RightClickAssistant.pkg/Scripts/postinstall"
+    if postinstall.read_bytes() != (ROOT / "Packaging/Scripts/postinstall").read_bytes():
+        raise RuntimeError("Installer is missing the setup launcher")
     payload = expanded / "RightClickAssistant.pkg/Payload" / APP.name
     verify_app(payload)
     zipped = work / "zip-expanded"
@@ -117,6 +122,8 @@ def create_packages(info, work):
 
     commit = subprocess.run(["git", "rev-parse", "--verify", "HEAD"], cwd=ROOT,
                             capture_output=True, text=True)
+    source_status = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT,
+                                   capture_output=True, text=True, check=True)
     metadata = output / "release-info.json"
     metadata.write_text(json.dumps({
         "name": "右键助手", "version": version, "build": info["CFBundleVersion"],
@@ -124,7 +131,10 @@ def create_packages(info, work):
         "minimum_macos": minimum, "architectures": ["arm64", "x86_64"],
         "install_location": "/Applications/右键助手.app",
         "application_signing": "ad-hoc", "installer_signed": False, "notarized": False,
+        "opens_app_after_install": True,
+        "upgrade_behavior": "replace-in-place; allow-repair; block-downgrade; preserve-user-data",
         "source_commit": commit.stdout.strip() if commit.returncode == 0 else None,
+        "source_dirty": bool(source_status.stdout.strip()),
         "built_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "assets": [{"name": item.name, "bytes": item.stat().st_size} for item in (installer, archive)],
     }, ensure_ascii=False, indent=2) + "\n")

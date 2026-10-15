@@ -79,6 +79,8 @@ final class SettingsView: NSView {
     private var sidebarButtons: [SidebarButton] = []
     private var section: SettingsSection = .newFile
     private var tableController: SettingsTableController?
+    private let extensionStatus = NSTextField(labelWithString: "")
+    private let extensionHelp = NSTextField(wrappingLabelWithString: "")
 
     init(app: AppController) {
         self.app = app; super.init(frame: NSRect(x: 0, y: 0, width: 900, height: 700))
@@ -200,8 +202,14 @@ final class SettingsView: NSView {
     private func buildGeneral(below heading: NSView) {
         let startup = NSButton(checkboxWithTitle: "登录时启动", target: self, action: #selector(toggleLogin(_:)))
         startup.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        let cards = NSStackView(views: [startup, checkbox("显示菜单图标", value: app.configuration.showIcons, key: "showIcons"),
-                                     makeButton("Finder 扩展设置…", action: #selector(openExtensionSettings))])
+        extensionStatus.font = .systemFont(ofSize: 15, weight: .semibold)
+        extensionStatus.identifier = NSUserInterfaceItemIdentifier("finder-extension-status")
+        extensionHelp.font = .systemFont(ofSize: 13)
+        extensionHelp.textColor = .secondaryLabelColor; extensionHelp.preferredMaxLayoutWidth = 500
+        refreshExtensionStatus()
+        let cards = NSStackView(views: [extensionStatus, extensionHelp,
+                                     makeButton("Finder 扩展设置…", action: #selector(openExtensionSettings)),
+                                     startup, checkbox("显示菜单图标", value: app.configuration.showIcons, key: "showIcons")])
         cards.orientation = .vertical; cards.alignment = .leading; cards.spacing = 20
         cards.translatesAutoresizingMaskIntoConstraints = false
         let card = NSView(); card.wantsLayer = true; card.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.72).cgColor
@@ -213,6 +221,14 @@ final class SettingsView: NSView {
             cards.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 24), cards.topAnchor.constraint(equalTo: card.topAnchor, constant: 24),
             cards.trailingAnchor.constraint(lessThanOrEqualTo: card.trailingAnchor, constant: -24), cards.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -24)
         ])
+    }
+    func refreshExtensionStatus() {
+        let enabled = FIFinderSyncController.isExtensionEnabled
+        extensionStatus.stringValue = enabled ? "Finder 扩展已启用" : "Finder 扩展未启用，右键功能尚未开启"
+        extensionStatus.textColor = enabled ? .systemGreen : .systemOrange
+        extensionHelp.stringValue = enabled
+            ? "如菜单尚未出现，请重新打开访达窗口；升级后也可在系统扩展设置中关闭再开启“右键助手”。"
+            : "点击下方按钮，在系统设置中开启“右键助手”。只有“用 ChatGPT 打开”一项时，也需要完成这一步。"
     }
     private func makeButton(_ title: String, action: Selector) -> NSButton {
         let button = NSButton(title: title, target: self, action: action)
@@ -250,7 +266,7 @@ final class SettingsView: NSView {
             if button.state == .on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
         } catch { button.state = button.state == .on ? .off : .on; app.error(error) }
     }
-    @objc private func openExtensionSettings() { FIFinderSyncController.showExtensionManagementInterface() }
+    @objc private func openExtensionSettings() { app.openFinderExtensionSettings() }
     @objc private func addEntry() {
         switch section {
         case .newFile:

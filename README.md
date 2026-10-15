@@ -6,6 +6,8 @@
 
 从 [GitHub Releases](https://github.com/DeadPool0o/rightmenu-helper/releases/latest) 下载 `.pkg` 安装程序，双击后按提示安装。安装完成后，从“应用程序”打开右键助手，在通用设置中打开 Finder 扩展设置并启用“右键助手”。
 
+安装完成后会自动打开应用；首次运行时若扩展未启用，会弹出启用引导，通用设置显示实时启用状态。若右键只有“用 ChatGPT 打开（右键助手）”，请先启用 Finder 扩展；该项属于系统服务，不能代表完整右键菜单已经启用。详见 [菜单缺失排查](INSTALL.md#右键只有用-chatgpt-打开)。
+
 支持 macOS 13 及以上版本，Universal 安装包同时支持 Apple 芯片与 Intel Mac，使用者无需安装开发工具。另提供便携版 ZIP、SHA-256 校验值和构建信息。
 
 当前应用使用 ad-hoc 本地签名，安装包没有 Developer ID Installer 签名，未经 Apple 公证。首次打开可能需要在系统“隐私与安全性”中允许该安装包或应用。详见 [安装、升级及卸载说明](INSTALL.md)。
