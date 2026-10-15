@@ -177,9 +177,12 @@ final class SettingsView: NSView {
                        checkbox("合并显示图片转换菜单", value: app.configuration.mergeMenus, key: "mergeMenus")]
         case .general: break
         }
-        let optionGrid = NSGridView(views: stride(from: 0, to: options.count, by: 2).map { index in
-            [options[index], index + 1 < options.count ? options[index + 1] : NSView()]
-        })
+        var optionRows: [[NSView]] = []
+        for index in stride(from: 0, to: options.count, by: 2) {
+            let second: NSView = index + 1 < options.count ? options[index + 1] : NSView()
+            optionRows.append([options[index], second])
+        }
+        let optionGrid = NSGridView(views: optionRows)
         optionGrid.translatesAutoresizingMaskIntoConstraints = false; optionGrid.rowSpacing = 14; optionGrid.columnSpacing = 32
         content.addSubview(optionGrid)
         NSLayoutConstraint.activate([
