@@ -1,0 +1,33 @@
+name: macOS Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check functionality and built-in templates
+        run: python3 check.py
+      - name: Build and verify universal installers
+        run: python3 package.py --expected-version "${GITHUB_REF_NAME#v}"
+      - name: Publish release and downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.pkg dist/*.zip dist/release-info.json dist/SHA256SUMS.txt \
+            --verify-tag --title "右键助手 $GITHUB_REF_NAME" \
+            --notes-file "releases/$GITHUB_REF_NAME.md" --draft
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

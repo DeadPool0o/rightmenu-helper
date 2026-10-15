@@ -1,0 +1,79 @@
+# 右键助手
+
+原生 macOS AppKit 设置窗口与 Finder Sync 右键扩展。文件操作从桌面、访达的右键菜单执行，应用窗口用于设置。
+
+## 下载与安装
+
+从 [GitHub Releases](https://github.com/DeadPool0o/rightmenu-helper/releases/latest) 下载 `.pkg` 安装程序，双击后按提示安装。安装完成后，从“应用程序”打开右键助手，在通用设置中打开 Finder 扩展设置并启用“右键助手”。
+
+支持 macOS 13 及以上版本，Universal 安装包同时支持 Apple 芯片与 Intel Mac，使用者无需安装开发工具。另提供便携版 ZIP、SHA-256 校验值和构建信息。
+
+当前应用使用 ad-hoc 本地签名，安装包没有 Developer ID Installer 签名，未经 Apple 公证。首次打开可能需要在系统“隐私与安全性”中允许该安装包或应用。详见 [安装、升级及卸载说明](INSTALL.md)。
+
+删除操作保留“永久删除”及确认弹窗；“移到废纸篓”使用 Finder 自带菜单，右键助手菜单和工具箱不再重复提供。
+
+## 当前迭代：新建文件
+
+设置界面采用固定侧栏：通用设置、新建文件、发送文件到、常用目录、文件（夹）图标、工具箱。本轮完整重做的是新建文件模块，其他模块保留现有能力，后续逐个对照原版完善。
+
+新建文件表支持逐项启用、双击编辑显示名称、拖动模板排序，以及勾选“主菜单”将类型放到右键一级菜单。显示图标、开启提示音、新建后自动打开均独立保存并生效。
+
+内置有效模板包括 TXT、Markdown、RTF、XML、Word、Excel、PPT、JSON、HTML、Python、Swift。可以添加自己的文档模板；添加时保存副本，原始文件不受影响。专有格式使用对应编辑器生成的有效模板，不能通过创建空字节文件伪造。
+
+右键空白处在当前目录新建，右键文件夹在该文件夹内新建。创建结果保留模板内容，自动补齐对应后缀；遇到同名文件会报错并保留原文件。自定义空白文件适用于文本、代码等类型，Office、图像、压缩包等格式须使用有效模板。
+
+## 文件（夹）图标
+
+预设直接向 macOS 图标服务获取文件夹、文稿、应用、图片、音乐、视频、资源库和开发文件夹图标，跟随当前系统的外观；设置预览、Finder 子菜单和写入结果共用同一来源。自选图片仍按原图应用。
+
+系统图标先固化为 16–1024 像素的七组位图。首次设置直接写入；替换已有图标时，按 [Apple DTS 的处理方法](https://developer.apple.com/forums/thread/788252) 先清除旧图标，并等 Finder 完成默认图标刷新后再写入。写入后通知目录变化并检查自定义图标标志，避免在新图标写入后强制刷新导致资源丢失。恢复默认时清除图标并刷新项目；新图标写入失败时尝试恢复原图标。
+
+## 使用与构建
+
+开发构建：`build/Applications.noindex/右键助手.app`。首次打开后，在通用设置中打开 Finder 扩展设置并启用“右键助手”。本机已有的超级右键扩展可以同时存在，因此菜单中可能出现两套同名项目。
+
+需要 macOS 13 或以上、Apple Command Line Tools、Python 3。
+
+```sh
+python3 build.py
+python3 check.py
+```
+
+`build.py --universal` 生成 arm64 与 x86_64 通用版本；默认编译当前架构，并进行本机 ad-hoc 签名。
+
+系统搜索、Finder 等位置使用应用包中的 `Resources/AppIcon.icns`。图标沿用设置页的蓝底白色光标样式，由 `Tools/GenerateAppIcon.swift` 生成。
+
+### 制作安装包
+
+```sh
+python3 check.py
+python3 package.py
+```
+
+`package.py` 自动编译 Universal 应用，生成 `dist/` 中的 `.pkg`、`.zip`、`SHA256SUMS.txt` 和 `release-info.json`，并解包验证安装位置、应用签名、两种架构、图标和模板。安装程序包含中文欢迎页、说明与完成提示；应用固定安装到 `/Applications/右键助手.app`。已有 Universal 构建可使用 `python3 package.py --skip-build`。
+
+开发构建放在 `Applications.noindex` 中；打包、解包验证使用 `.noindex` 临时目录，完成后自动清理，避免生成的应用副本重复出现在系统搜索中。日常使用请打开“应用程序”中的版本。
+
+`.github/workflows/release.yml` 在推送 `v*` 标签后自动检查、构建和发布。发布前将 `build.py` 的版本号与构建号更新，编写 `releases/v版本号.md`，提交代码，再推送对应版本标签；构建会核对标签与应用版本是否一致。当前发布流程生成的应用为 ad-hoc 签名，PKG 未签名、未公证。
+
+## 验证记录
+
+最近一次自动检查为 75 项通过，包含配置迁移、模板菜单参数、逐项启用／改名／排序／主菜单位置、真实 Word 模板创建、同名文件保护和失败清理；另有 Office 模板容器完整性检查。测试目录、测试程序和结果文件已按用户要求清理，重新运行 `check.py` 会再次生成。
+
+0.2.7 菜单检查：已在 Finder 文件、文件夹右键菜单及工具箱设置中确认“永久删除”不带省略号，助手不再提供“移到废纸篓”，Finder 系统菜单仍保留该项。删除前确认逻辑保留。
+
+此前已在专用测试目录从 Finder 右键执行“进入终端”，通过新 shell 的实际工作目录验证进入所选文件夹。新建模块已观察到设置开关、名称、主菜单位置与 Finder 菜单联动，并实际生成了结构完整的 Word 文档。自动检查不等于每项功能均已手动验证。
+
+0.2.8 图标检查（2026-10-14）：通过 Finder 原生右键菜单，在同一窗口、同一目录连续将文件夹图标设为图片、音乐、代码，再恢复默认；普通 TXT 文件也完成图片、音乐图标替换与恢复。新图标在当前目录自动显示，无需切换路径。读取 FinderInfo 与图标 ResourceFork 确认替换后资源保留，恢复后自定义图标移除。此前八种系统预设的位图固化与连续写入自动检查通过。所有测试目录和文件已清理。
+
+## 源码
+
+- `Sources/App/SettingsUI.swift`：侧栏、表格与设置编辑。
+- `Sources/Shared/Core.swift`：配置、模板模型、上下文规则与文件保护。
+- `Sources/Shared/NativeFileIcons.swift`：统一获取、固化系统文件夹图标。
+- `Sources/App/FileIcons.swift`：图标替换、失败恢复、Finder 项目刷新。
+- `Sources/Extension/FinderSync.swift`：读取配置、生成原生右键菜单、传递模板 ID。
+- `Sources/App/Actions.swift`：具体文件操作。
+- `Tests/Checks.swift`：可重复的功能检查。
+
+原版参考：`../rea/irightmouse-analysis/超级右键_REA分析报告.md` 及实际页面观察记录。实现使用自有代码与系统图标。

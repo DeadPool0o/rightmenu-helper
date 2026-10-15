@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>右键助手 @VERSION@</title>
+  <organization>local.kingdee.RightClickAssistant</organization>
+  <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+  <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+  <volume-check>
+    <allowed-os-versions><os-version min="@MINIMUM_OS@"/></allowed-os-versions>
+  </volume-check>
+  <welcome file="Welcome.html" mime-type="text/html"/>
+  <readme file="ReadMe.html" mime-type="text/html"/>
+  <conclusion file="Conclusion.html" mime-type="text/html"/>
+  <choices-outline><line choice="application"/></choices-outline>
+  <choice id="application" title="右键助手" visible="false">
+    <pkg-ref id="local.kingdee.RightClickAssistant.pkg"/>
+  </choice>
+  <pkg-ref id="local.kingdee.RightClickAssistant.pkg" version="@VERSION@" onConclusion="None">RightClickAssistant.pkg</pkg-ref>
+  <pkg-ref id="local.kingdee.RightClickAssistant.pkg">
+    <must-close><app id="local.kingdee.RightClickAssistant"/></must-close>
+  </pkg-ref>
+</installer-gui-script>
