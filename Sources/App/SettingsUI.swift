@@ -4,13 +4,14 @@ import ServiceManagement
 import UniformTypeIdentifiers
 
 private enum SettingsSection: Int, CaseIterable {
-    case general, newFile, destinations, commonFolders, icons, toolbox
+    case general, newFile, destinations, commonFolders, applications, icons, toolbox
     var title: String {
         switch self {
         case .general: return "通用设置"
         case .newFile: return "新建文件"
         case .destinations: return "发送文件到…"
         case .commonFolders: return "常用目录"
+        case .applications: return "打开方式"
         case .icons: return "文件（夹）图标"
         case .toolbox: return "工具箱"
         }
@@ -21,6 +22,7 @@ private enum SettingsSection: Int, CaseIterable {
         case .newFile: return "doc.badge.plus"
         case .destinations: return "doc.fill"
         case .commonFolders: return "heart.fill"
+        case .applications: return "app.fill"
         case .icons: return "folder.fill"
         case .toolbox: return "square.grid.2x2.fill"
         }
@@ -31,6 +33,7 @@ private enum SettingsSection: Int, CaseIterable {
         case .newFile: return .systemTeal
         case .destinations: return .systemGreen
         case .commonFolders: return .systemPink
+        case .applications: return .systemIndigo
         case .icons: return .systemOrange
         case .toolbox: return .systemPurple
         }
@@ -155,15 +158,25 @@ final class SettingsView: NSView {
         let controller = SettingsTableController(app: app, kind: selected)
         tableController = controller
         let scroll = controller.scrollView; content.addSubview(scroll)
+        if selected == .applications && app.configuration.applications.isEmpty {
+            let empty = NSTextField(wrappingLabelWithString: "点击下方“添加本机应用…”选择常用软件，保存后可从右键“打开方式”直接打开文件或文件夹。")
+            empty.textColor = .secondaryLabelColor; empty.alignment = .center
+            empty.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(empty)
+            NSLayoutConstraint.activate([
+                empty.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
+                empty.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
+                empty.widthAnchor.constraint(equalTo: scroll.widthAnchor, constant: -60)
+            ])
+        }
         let toolbar = NSStackView(); toolbar.orientation = .horizontal; toolbar.spacing = 8
         toolbar.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(toolbar)
         let reset = makeButton("重置", action: #selector(resetPage)); content.addSubview(reset)
-        let add = makeButton(selected == .newFile ? "添加模板文件…" : selected == .toolbox ? "新建进入 App…" : "+", action: #selector(addEntry))
-        let remove = makeButton(selected == .newFile ? "删除" : "−", action: #selector(removeEntry))
+        let add = makeButton(selected == .newFile ? "添加模板文件…" : selected == .applications ? "添加本机应用…" : "+", action: #selector(addEntry))
+        let remove = makeButton([.newFile, .applications].contains(selected) ? "删除" : "−", action: #selector(removeEntry))
         remove.identifier = NSUserInterfaceItemIdentifier("settings-remove-entry")
         controller.selectionChanged = { [weak remove] value in remove?.isEnabled = value }
         remove.isEnabled = false
-        if selected != .icons { toolbar.addArrangedSubview(add); toolbar.addArrangedSubview(remove) }
+        if ![.icons, .toolbox].contains(selected) { toolbar.addArrangedSubview(add); toolbar.addArrangedSubview(remove) }
         var options: [NSView] = []
         switch selected {
         case .newFile:
@@ -173,6 +186,8 @@ final class SettingsView: NSView {
         case .destinations:
             options = [actionCheckbox(.moveTo, title: "启用移动文件到…"), actionCheckbox(.copyTo, title: "启用复制文件到…")]
         case .commonFolders: options = [actionCheckbox(.commonFolder, title: "启用常用目录")]
+        case .applications:
+            options = [actionCheckbox(.otherApp, title: "启用右键“打开方式”")]
         case .icons: options = [actionCheckbox(.setIcon, title: "启用文件（夹）图标"), actionCheckbox(.resetIcon, title: "允许恢复默认图标")]
         case .toolbox:
             options = [checkbox("显示图标", value: app.configuration.showIcons, key: "showIcons"),
@@ -228,7 +243,7 @@ final class SettingsView: NSView {
         extensionStatus.textColor = enabled ? .systemGreen : .systemOrange
         extensionHelp.stringValue = enabled
             ? "如菜单尚未出现，请重新打开访达窗口；升级后也可在系统扩展设置中关闭再开启“右键助手”。"
-            : "点击下方按钮，在系统设置中开启“右键助手”。只有“用 ChatGPT 打开”一项时，也需要完成这一步。"
+            : "点击下方按钮，在系统设置中开启“右键助手”。只有“打开方式（右键助手）”一项时，也需要完成这一步。"
     }
     private func makeButton(_ title: String, action: Selector) -> NSButton {
         let button = NSButton(title: title, target: self, action: action)
@@ -301,11 +316,12 @@ final class SettingsView: NSView {
                     app.configuration.destinationFolders.append(FolderReference(name: url.lastPathComponent, path: url.path))
                 }
             } else if !app.configuration.commonFolders.contains(url.path) { app.configuration.commonFolders.append(url.path) }
-        case .toolbox:
-            let panel = NSOpenPanel(); panel.title = "添加右键打开应用"; panel.allowedContentTypes = [.applicationBundle]
-            panel.directoryURL = URL(fileURLWithPath: "/Applications")
-            guard panel.runModal() == .OK, let url = panel.url else { return }
-            app.addApplication(url)
+        case .applications:
+            let picker = ApplicationPicker()
+            let urls = picker.choose(multiple: true, excluding: app.configuration.applications.filter(\.enabled))
+            guard !urls.isEmpty else { return }
+            do { try app.addApplications(urls) } catch { app.error(error) }
+            return
         default: return
         }
         app.persistSettings(); tableController?.reload()
@@ -318,12 +334,11 @@ final class SettingsView: NSView {
             app.configuration.newFileTemplates.remove(at: row - 1)
         case .destinations: app.configuration.destinationFolders.remove(at: row)
         case .commonFolders: app.configuration.commonFolders.remove(at: row)
-        case .toolbox:
-            guard let index = tableController?.applicationIndex(forRow: row) else { return }
-            app.configuration.applications.remove(at: index)
+        case .applications: app.configuration.applications.remove(at: row)
         default: return
         }
-        app.persistSettings(); tableController?.reload()
+        app.persistSettings()
+        if section == .applications { showSection(section) } else { tableController?.reload() }
     }
     @objc private func resetPage() {
         let alert = NSAlert(); alert.messageText = "重置" + section.title + "？"
@@ -338,11 +353,14 @@ final class SettingsView: NSView {
             app.configuration.customNewFileName = "自定义创建新文件"
         case .destinations: app.configuration.destinationFolders = defaults.destinationFolders
         case .commonFolders: app.configuration.commonFolders = defaults.commonFolders
+        case .applications:
+            app.configuration.applications = []
+            app.configuration.disabledActions.remove(MenuAction.otherApp.rawValue)
         case .icons:
             app.configuration.disabledActions.remove(MenuAction.setIcon.rawValue); app.configuration.disabledActions.remove(MenuAction.resetIcon.rawValue)
         case .toolbox:
             for action in SettingsTableController.toolboxActions { app.configuration.disabledActions.remove(action.rawValue) }
-            app.configuration.applications = []; app.configuration.showIcons = true; app.configuration.mergeMenus = true
+            app.configuration.showIcons = true; app.configuration.mergeMenus = true
         case .general: break
         }
         app.persistSettings(); showSection(section)
@@ -398,7 +416,7 @@ private final class SettingsTableController: NSObject, NSTableViewDataSource, NS
     private let rowDragType = NSPasteboard.PasteboardType("local.kingdee.RightClickAssistant.template-row")
     static let toolboxActions: [MenuAction] = [.fileInfo, .desktopLink, .airDrop, .share, .copyName, .folderByName, .cut, .paste,
         .dissolve, .wallpaper, .copyPath, .commonFolder, .deleteForever, .unhide, .hide, .hideExtension, .showExtension,
-        .terminal, .chatGPT, .analyze, .otherApp, .zip, .sevenZip, .encryptedArchive, .extract,
+        .terminal, .zip, .sevenZip, .encryptedArchive, .extract,
         .png, .jpeg, .heic, .webp, .icns, .macIcons, .iosIcons, .qrCode, .baiduTranslate, .googleTranslate]
 
     init(app: AppController, kind: SettingsSection) {
@@ -422,6 +440,9 @@ private final class SettingsTableController: NSObject, NSTableViewDataSource, NS
             column("name", title: "显示名称", width: 180)
         case .icons:
             column("icon", title: "图标", width: 56); column("name", title: "名称", width: 300, flexible: true)
+        case .applications:
+            column("enabled", title: "启用", width: 52); column("icon", title: "图标", width: 48)
+            column("name", title: "应用", width: 180); column("path", title: "安装位置", width: 270, flexible: true)
         case .toolbox:
             column("enabled", title: "启用", width: 52); column("icon", title: "图标", width: 48)
             column("name", title: "显示名称", width: 300, flexible: true); column("details", title: "选项", width: 170)
@@ -445,17 +466,14 @@ private final class SettingsTableController: NSObject, NSTableViewDataSource, NS
         case .destinations: return app.configuration.destinationFolders.count
         case .commonFolders: return app.configuration.commonFolders.count
         case .icons: return IconPreset.all.count
-        case .toolbox: return Self.toolboxActions.count + app.configuration.applications.count
+        case .applications: return app.configuration.applications.count
+        case .toolbox: return Self.toolboxActions.count
         case .general: return 0
         }
     }
-    func applicationIndex(forRow row: Int) -> Int? {
-        let index = row - Self.toolboxActions.count
-        return kind == .toolbox && index >= 0 && index < app.configuration.applications.count ? index : nil
-    }
     func reload() { table.reloadData(); selectionChanged?(false) }
     func tableViewSelectionDidChange(_ notification: Notification) {
-        let removable = table.selectedRow >= 0 && (kind != .newFile || table.selectedRow > 0) && (kind != .toolbox || applicationIndex(forRow: table.selectedRow) != nil)
+        let removable = table.selectedRow >= 0 && (kind != .newFile || table.selectedRow > 0) && kind != .toolbox
         selectionChanged?(removable)
     }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -464,7 +482,6 @@ private final class SettingsTableController: NSObject, NSTableViewDataSource, NS
         cell.subviews.forEach { $0.removeFromSuperview() }; cell.textField = nil; cell.imageView = nil
         cell.identifier = tableColumn?.identifier
         if column == "enabled" || column == "main" {
-            if kind == .toolbox && row >= Self.toolboxActions.count { return cell }
             let button = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggleRow(_:)))
             button.tag = row; button.identifier = NSUserInterfaceItemIdentifier(column)
             if kind == .newFile {
@@ -477,14 +494,13 @@ private final class SettingsTableController: NSObject, NSTableViewDataSource, NS
                     button.state = (column == "main" ? entry.showInMainMenu : entry.enabled) ? .on : .off
                 }
                 button.setAccessibilityLabel((column == "main" ? "主菜单：" : "启用：") + name)
+            } else if kind == .applications {
+                let reference = app.configuration.applications[row]
+                button.state = reference.enabled ? .on : .off
+                button.setAccessibilityLabel("启用：" + reference.name)
             } else if kind == .toolbox {
-                if row < Self.toolboxActions.count {
-                    let action = Self.toolboxActions[row]; button.state = app.configuration.enabled(action) ? .on : .off
-                    button.setAccessibilityLabel("启用：" + action.title)
-                } else {
-                    button.state = app.configuration.enabled(.otherApp) ? .on : .off
-                    button.setAccessibilityLabel("启用自定义应用")
-                }
+                let action = Self.toolboxActions[row]; button.state = app.configuration.enabled(action) ? .on : .off
+                button.setAccessibilityLabel("启用：" + action.title)
             }
             button.translatesAutoresizingMaskIntoConstraints = false; cell.addSubview(button)
             NSLayoutConstraint.activate([button.centerXAnchor.constraint(equalTo: cell.centerXAnchor), button.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
@@ -500,6 +516,7 @@ private final class SettingsTableController: NSObject, NSTableViewDataSource, NS
             field.font = .systemFont(ofSize: 14); field.lineBreakMode = .byTruncatingMiddle
             field.translatesAutoresizingMaskIntoConstraints = false; field.delegate = self
             if column == "path" || column == "details" { field.textColor = .secondaryLabelColor; field.font = .systemFont(ofSize: 12) }
+            if kind == .applications { field.toolTip = app.configuration.applications[row].path }
             cell.addSubview(field); cell.textField = field
             NSLayoutConstraint.activate([field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
                                         field.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4), field.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
@@ -518,8 +535,8 @@ private final class SettingsTableController: NSObject, NSTableViewDataSource, NS
         case .destinations: return workspace.icon(forFile: app.configuration.destinationFolders[row].path)
         case .commonFolders: return workspace.icon(forFile: app.configuration.commonFolders[row])
         case .icons: return NativeFileIcons.image(for: IconPreset.all[row], size: 26)
+        case .applications: return workspace.icon(forFile: app.configuration.applications[row].path)
         case .toolbox:
-            if let index = applicationIndex(forRow: row) { return workspace.icon(forFile: app.configuration.applications[index].path) }
             let action = Self.toolboxActions[row]
             return SettingsView.tileIcon(action.icon, color: color(for: action), size: 26)
         case .general: return nil
@@ -548,11 +565,12 @@ private final class SettingsTableController: NSObject, NSTableViewDataSource, NS
             let path = app.configuration.commonFolders[row]
             return column == "path" ? (path as NSString).abbreviatingWithTildeInPath : URL(fileURLWithPath: path).lastPathComponent
         case .icons: return IconPreset.all[row].name
+        case .applications:
+            let reference = app.configuration.applications[row]
+            if column == "name" { return reference.name }
+            let path = (reference.path as NSString).abbreviatingWithTildeInPath
+            return FileManager.default.fileExists(atPath: reference.path) ? path : "未找到应用：" + path
         case .toolbox:
-            if let index = applicationIndex(forRow: row) {
-                let appRef = app.configuration.applications[index]
-                return column == "name" ? "进入 " + appRef.name : (appRef.path as NSString).abbreviatingWithTildeInPath
-            }
             let action = Self.toolboxActions[row]
             if column == "name" { return action.title }
             if action == .deleteForever { return "需要再次确认" }
@@ -578,11 +596,12 @@ private final class SettingsTableController: NSObject, NSTableViewDataSource, NS
                 }
                 app.configuration.newFileTemplates[row - 1].enabled = button.state == .on
             }
+        } else if kind == .applications {
+            app.configuration.applications[row].enabled = button.state == .on
         } else if kind == .toolbox {
-            let action = row < Self.toolboxActions.count ? Self.toolboxActions[row] : .otherApp
+            let action = Self.toolboxActions[row]
             if button.state == .on { app.configuration.disabledActions.remove(action.rawValue) }
             else { app.configuration.disabledActions.insert(action.rawValue) }
-            if row >= Self.toolboxActions.count { table.reloadData() }
         }
         app.persistSettings()
     }

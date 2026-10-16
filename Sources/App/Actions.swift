@@ -13,12 +13,10 @@ final class ActionRunner {
         guard let s = selection else { app.message("没有选中的项目", "请在桌面或访达中右键文件或文件夹后执行此操作。"); return }
         do {
             switch action {
-            case .chatGPT: try openChatGPT(s, analyze: false)
-            case .analyze: try openChatGPT(s, analyze: true)
             case .otherApp:
+                guard app.configuration.enabled(.otherApp) else { throw AssistantError.message("请先在设置中启用“打开方式”。") }
                 if let path = options.application {
-                    guard app.configuration.applications.contains(where: { $0.path == path }) else { throw AssistantError.message("请先在设置中添加这个应用。") }
-                    try openURLs(s.urls, appURL: URL(fileURLWithPath: path))
+                    try openURLs(s.urls, appURL: ApplicationCatalog.configuredApplication(path: path, configuration: app.configuration))
                 } else { chooseApp(s) }
             case .terminal:
                 guard s.urls.allSatisfy(MenuPolicy.isFolder) else { throw AssistantError.message("进入终端需要选中文件夹。") }
@@ -145,7 +143,7 @@ final class ActionRunner {
     }
     private func open(_ url: URL, bundleID: String) throws { try openURLs([url], appURL: applicationURL(bundleID: bundleID)) }
     func openURLs(_ urls: [URL], appURL: URL) throws {
-        guard Bundle(url: appURL)?.bundleIdentifier != nil else { throw AssistantError.message("请选择有效的 .app 应用。") }
+        guard ApplicationCatalog.reference(at: appURL) != nil else { throw AssistantError.message("未找到有效应用，请在“打开方式”设置中重新添加。") }
         NSWorkspace.shared.open(urls, withApplicationAt: appURL, configuration: NSWorkspace.OpenConfiguration()) { _, error in
             DispatchQueue.main.async {
                 if let error { self.app.error(error) }
@@ -153,40 +151,12 @@ final class ActionRunner {
             }
         }
     }
-    private func openChatGPT(_ selection: Selection, analyze: Bool) throws {
-        let target = try NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") ??
-            NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.chat") ??
-            applicationURL(bundleID: "com.openai.codex", fallback: "/Applications/ChatGPT.app")
-        let identifier = Bundle(url: target)?.bundleIdentifier
-        if analyze {
-            guard identifier == "com.openai.codex" else { throw AssistantError.message("预填本地分析提示词需要支持 codex:// 的新版 ChatGPT。直接打开仍可使用。") }
-            guard let prompt = textDialog("让 ChatGPT 分析", initial: app.configuration.analysisPrompt) else { return }
-            try openURLs([ChatGPTLink.draft(selection: selection, instruction: prompt)], appURL: target)
-        } else {
-            var documents: [URL] = []; var folders: [URL] = []
-            for u in selection.urls {
-                let v = try u.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
-                if identifier == "com.openai.codex" && v.isDirectory == true && v.isPackage != true { folders.append(ChatGPTLink.folder(u)) }
-                else { documents.append(u) }
-            }
-            if !documents.isEmpty { try openURLs(documents, appURL: target) }
-            for folder in folders { try openURLs([folder], appURL: target) }
-        }
-    }
     private func chooseApp(_ s: Selection) {
-        let alert = NSAlert(); alert.messageText = "用哪个 App 打开？"
-        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 340, height: 28))
-        popup.addItems(withTitles: app.configuration.applications.map(\.name) + ["选择其他应用…"])
-        alert.accessoryView = popup; alert.addButton(withTitle: "打开"); alert.addButton(withTitle: "取消")
-        NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let picker = ApplicationPicker()
+        guard let url = picker.choose(multiple: false, opening: true).first else { return }
         do {
-            if popup.indexOfSelectedItem < app.configuration.applications.count {
-                try openURLs(s.urls, appURL: URL(fileURLWithPath: app.configuration.applications[popup.indexOfSelectedItem].path))
-            } else {
-                let p = NSOpenPanel(); p.title = "选择应用"; p.allowedContentTypes = [.applicationBundle]; p.directoryURL = URL(fileURLWithPath: "/Applications")
-                if p.runModal() == .OK, let u = p.url { app.addApplication(u); try openURLs(s.urls, appURL: u) }
-            }
+            try app.addApplications([url])
+            try openURLs(s.urls, appURL: url)
         } catch { app.error(error) }
     }
     func directoryPanel(_ title: String, initial: URL? = nil) -> URL? {

@@ -29,7 +29,8 @@ struct.pack_into("<I", b, end+16, 0xFFFFFF00)
 (fixtures / "invalid-offset.zip").write_bytes(b)
 command = ["/usr/bin/xcrun", "swiftc", "-swift-version", "5", "-parse-as-library", "-module-cache-path", str(build / "ModuleCache"),
            "-framework", "AppKit", "-framework", "CoreImage", "-framework", "ImageIO", "-framework", "UniformTypeIdentifiers",
-           str(ROOT / "Sources/Shared/Core.swift"), str(ROOT / "Sources/App/Media.swift"), str(ROOT / "Tests/Checks.swift"),
+           str(ROOT / "Sources/Shared/Core.swift"), str(ROOT / "Sources/Shared/ApplicationCatalog.swift"),
+           str(ROOT / "Sources/App/Media.swift"), str(ROOT / "Tests/Checks.swift"),
            "-o", str(build / "checks")]
 subprocess.run(command, check=True)
 subprocess.run([str(build / "checks"), str(fixtures)], check=True)

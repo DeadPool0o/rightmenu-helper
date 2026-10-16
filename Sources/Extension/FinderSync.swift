@@ -76,14 +76,16 @@ final class RightClickFinderSync: FIFinderSync {
             icons.append(item(.setIcon, title: "选择图标图片…"))
         }
         if !icons.isEmpty { menu.addItem(submenu("文件（夹）图标", symbol: "folder.fill", items: icons)) }
-        for action in [MenuAction.desktopLink, .airDrop, .share, .copyName, .folderByName, .cut, .paste, .dissolve, .copyPath, .commonFolder, .deleteForever, .unhide, .hide, .hideExtension, .showExtension, .fileInfo, .chatGPT, .analyze, .terminal, .zip, .sevenZip, .encryptedArchive, .extract] where available.contains(action) { menu.addItem(item(action)) }
+        for action in [MenuAction.desktopLink, .airDrop, .share, .copyName, .folderByName, .cut, .paste, .dissolve, .copyPath, .commonFolder, .deleteForever, .unhide, .hide, .hideExtension, .showExtension, .fileInfo, .terminal, .zip, .sevenZip, .encryptedArchive, .extract] where available.contains(action) { menu.addItem(item(action)) }
         if available.contains(.otherApp) {
-            var apps = configuration.applications.map { reference -> NSMenuItem in
+            var apps = configuration.applications.filter(\.enabled).map { reference -> NSMenuItem in
                 let row = item(.otherApp, title: reference.name, options: ActionOptions(application: reference.path))
+                row.toolTip = reference.path
                 if configuration.showIcons { row.image = NSWorkspace.shared.icon(forFile: reference.path) }; return row
             }
-            apps.append(item(.otherApp, title: "选择其他应用…"))
-            menu.addItem(submenu("打开应用", symbol: "app", items: apps))
+            if !apps.isEmpty { apps.append(.separator()) }
+            apps.append(item(.otherApp, title: "添加应用并打开…"))
+            menu.addItem(submenu(MenuAction.otherApp.title, symbol: "app", items: apps))
         }
         let conversions = [MenuAction.png, .jpeg, .heic, .webp, .icns, .macIcons, .iosIcons].filter(available.contains)
         if configuration.mergeMenus && !conversions.isEmpty { menu.addItem(submenu("转换图片", symbol: "photo", items: conversions.map { item($0) })) }
@@ -120,8 +122,6 @@ final class RightClickFinderSync: FIFinderSync {
     }
     private func selector(_ action: MenuAction) -> Selector {
         switch action {
-        case .chatGPT: return #selector(onChatGPT(_:))
-        case .analyze: return #selector(onAnalyze(_:))
         case .otherApp: return #selector(onOtherApp(_:))
         case .terminal: return #selector(onTerminal(_:))
         case .copyPath: return #selector(onCopyPath(_:))
@@ -166,8 +166,6 @@ final class RightClickFinderSync: FIFinderSync {
         case .settings: return #selector(onSettings(_:))
         }
     }
-    @objc func onChatGPT(_ sender: Any?) { dispatch(.chatGPT, sender: sender) }
-    @objc func onAnalyze(_ sender: Any?) { dispatch(.analyze, sender: sender) }
     @objc func onOtherApp(_ sender: Any?) { dispatch(.otherApp, sender: sender) }
     @objc func onTerminal(_ sender: Any?) { dispatch(.terminal, sender: sender) }
     @objc func onCopyPath(_ sender: Any?) { dispatch(.copyPath, sender: sender) }

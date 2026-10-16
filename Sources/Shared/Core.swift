@@ -8,7 +8,7 @@ enum ActionLog {
 }
 
 enum MenuAction: String, CaseIterable, Codable {
-    case chatGPT, analyze, otherApp, terminal, copyPath, copyName, cut, paste
+    case otherApp, terminal, copyPath, copyName, cut, paste
     case copyTo, moveTo, newText, newMarkdown, newTemplate, newEmpty, commonFolder
     case fileInfo, folderByName, dissolve, desktopLink, hide, unhide, hideExtension, showExtension
     case deleteForever, zip, sevenZip, encryptedArchive, extract
@@ -17,9 +17,7 @@ enum MenuAction: String, CaseIterable, Codable {
 
     var title: String {
         switch self {
-        case .chatGPT: return "用 ChatGPT 打开"
-        case .analyze: return "让 ChatGPT 分析…"
-        case .otherApp: return "用其他 App 打开…"
+        case .otherApp: return "打开方式"
         case .terminal: return "进入终端"
         case .copyPath: return "拷贝路径"
         case .copyName: return "拷贝文件（夹）名称"
@@ -65,7 +63,7 @@ enum MenuAction: String, CaseIterable, Codable {
     }
 
     static let groups: [(String, [MenuAction])] = [
-        ("ChatGPT 与应用", [.chatGPT, .analyze, .otherApp, .terminal]),
+        ("应用与终端", [.otherApp, .terminal]),
         ("新建与文件操作", [.newText, .newMarkdown, .newTemplate, .cut, .paste, .copyTo, .moveTo,
                         .copyPath, .copyName, .commonFolder, .folderByName, .dissolve, .desktopLink, .fileInfo]),
         ("显示与图标", [.hide, .unhide, .hideExtension, .showExtension, .setIcon, .resetIcon]),
@@ -74,7 +72,7 @@ enum MenuAction: String, CaseIterable, Codable {
         ("分享与文本", [.airDrop, .share, .qrCode, .baiduTranslate, .googleTranslate]),
         ("删除", [.deleteForever])
     ]
-    static let primary: [MenuAction] = [.chatGPT, .analyze, .moveTo, .copyTo, .copyName, .copyPath, .terminal]
+    static let primary: [MenuAction] = [.otherApp, .moveTo, .copyTo, .copyName, .copyPath, .terminal]
 
     var menuTag: Int { Self.allCases.firstIndex(of: self)! + 1 }
     init?(menuTag: Int) {
@@ -84,7 +82,6 @@ enum MenuAction: String, CaseIterable, Codable {
 
     var icon: String {
         switch self {
-        case .chatGPT, .analyze: return "bubble.left.and.bubble.right"
         case .terminal: return "terminal"
         case .moveTo: return "folder.badge.arrowshape.right"
         case .copyTo: return "doc.on.doc"
@@ -350,30 +347,24 @@ enum TemplatePolicy {
     }
 }
 
-enum ChatGPTLink {
-    static func draft(selection: Selection, instruction: String) -> URL {
-        var c = URLComponents(); c.scheme = "codex"; c.host = "new"
-        let selected = selection.urls.map { "• " + $0.path }.joined(separator: "\n")
-        let prompt = instruction + "\n\n我在 Finder 中选中了以下项目，请以它们为处理范围：\n" + selected
-        c.queryItems = [URLQueryItem(name: "path", value: selection.directory.path),
-                        URLQueryItem(name: "prompt", value: prompt)]
-        return c.url!
-    }
-    static func folder(_ url: URL) -> URL {
-        var c = URLComponents(); c.scheme = "codex"; c.host = "new"
-        c.queryItems = [URLQueryItem(name: "path", value: url.path)]
-        return c.url!
-    }
-}
-
 struct AppReference: Codable, Equatable {
     var name: String
     var path: String
+    var enabled = true
+
+    init(name: String, path: String, enabled: Bool = true) {
+        self.name = name; self.path = path; self.enabled = enabled
+    }
+    private enum CodingKeys: String, CodingKey { case name, path, enabled }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        path = try c.decode(String.self, forKey: .path)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+    }
 }
 
 struct AssistantConfiguration: Codable {
-    var chatGPTPath = "/Applications/ChatGPT.app"
-    var analysisPrompt = "请先说明这些文件或文件夹的用途和结构，再列出值得关注的问题。"
     var applications: [AppReference] = []
     var commonFolders: [String] = []
     var customTemplates: [String] = []
@@ -395,18 +386,17 @@ struct AssistantConfiguration: Codable {
     var mergeMenus = true
     init() {}
     enum CodingKeys: String, CodingKey {
-        case chatGPTPath, analysisPrompt, applications, commonFolders, customTemplates, destinationFolders, disabledActions, showIcons, mergeMenus
+        case applications, commonFolders, customTemplates, destinationFolders, disabledActions, showIcons, mergeMenus
         case newFileTemplates, customNewFileEnabled, customNewFileMainMenu, customNewFileName, newFileShowIcons, newFileSound, newFileAutoOpen
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        chatGPTPath = try c.decodeIfPresent(String.self, forKey: .chatGPTPath) ?? chatGPTPath
-        analysisPrompt = try c.decodeIfPresent(String.self, forKey: .analysisPrompt) ?? analysisPrompt
         applications = try c.decodeIfPresent([AppReference].self, forKey: .applications) ?? []
         commonFolders = try c.decodeIfPresent([String].self, forKey: .commonFolders) ?? []
         customTemplates = try c.decodeIfPresent([String].self, forKey: .customTemplates) ?? []
         destinationFolders = try c.decodeIfPresent([FolderReference].self, forKey: .destinationFolders) ?? destinationFolders
         disabledActions = try c.decodeIfPresent(Set<String>.self, forKey: .disabledActions) ?? []
+        disabledActions.subtract(["chatGPT", "analyze"])
         showIcons = try c.decodeIfPresent(Bool.self, forKey: .showIcons) ?? true
         mergeMenus = try c.decodeIfPresent(Bool.self, forKey: .mergeMenus) ?? true
         if let templates = try c.decodeIfPresent([TemplateReference].self, forKey: .newFileTemplates) {

@@ -38,8 +38,8 @@ import ImageIO
         let legacyConfiguration = try JSONDecoder().decode(AssistantConfiguration.self, from: Data("{\"commonFolders\":[\"/tmp\"]}".utf8))
         try check("settings migration preserves favorites", legacyConfiguration.commonFolders == ["/tmp"] && legacyConfiguration.showIcons)
         try check("selection deduplicates", selection.urls.count == 1)
-        let decoded = try Handoff.decode(Handoff.url(action: .chatGPT, selection: selection))
-        try check("Unicode and reserved characters round-trip", decoded.0 == .chatGPT && decoded.1 == selection)
+        let decoded = try Handoff.decode(Handoff.url(action: .otherApp, selection: selection))
+        try check("Unicode and reserved characters round-trip", decoded.0 == .otherApp && decoded.1 == selection)
         let destinationOptions = try Handoff.decode(Handoff.url(action: .copyTo, selection: selection, options: ActionOptions(destination: folder.path)))
         try check("submenu destination survives handoff", destinationOptions.2.destination == folder.path)
         let templateOptions = try Handoff.decode(Handoff.url(action: .newTemplate, selection: selection, options: ActionOptions(template: "builtin-word")))
@@ -54,17 +54,59 @@ import ImageIO
         try rejects("duplicate destinations are rejected") { _ = try Handoff.decode(URL(string: "rightclick-assistant://action/copyTo?item=/tmp/x&destination=/tmp&destination=/")!) }
         try rejects("empty selection") { _ = try Selection(urls: []) }
         try rejects("unknown handoff action") { _ = try Handoff.decode(URL(string: "rightclick-assistant://action/execute?item=/tmp/x")!) }
-        try rejects("relative path") { _ = try Handoff.decode(URL(string: "rightclick-assistant://action/chatGPT?item=relative")!) }
-        try rejects("ambiguous directory") { _ = try Handoff.decode(URL(string: "rightclick-assistant://action/chatGPT?item=/tmp/x&directory=/tmp&directory=/")!) }
+        try rejects("relative path") { _ = try Handoff.decode(URL(string: "rightclick-assistant://action/otherApp?item=relative")!) }
+        try rejects("ambiguous directory") { _ = try Handoff.decode(URL(string: "rightclick-assistant://action/otherApp?item=/tmp/x&directory=/tmp&directory=/")!) }
         try rejects("remote source") { _ = try Selection(urls: [URL(string: "https://example.com/x")!]) }
         try rejects("filename traversal") { try FilePolicy.validateName("../x") }
-        let link = ChatGPTLink.draft(selection: selection, instruction: "分析 #&?%+ 中文")
-        let query = URLComponents(url: link, resolvingAgainstBaseURL: false)!.queryItems!
-        try check("documented local workspace in draft", query.first { $0.name == "path" }!.value == folder.path)
-        try check("draft retains full selected path and text", query.first { $0.name == "prompt" }!.value!.contains(file.path))
-        try check("draft has no automatic-send flag", Set(query.map(\.name)) == ["path", "prompt"])
-        let folderLink = URLComponents(url: ChatGPTLink.folder(folder), resolvingAgainstBaseURL: false)!
-        try check("folder opens workspace without fabricated prompt", folderLink.queryItems == [URLQueryItem(name: "path", value: folder.path)])
+        let installed = root.appendingPathComponent("Applications", isDirectory: true)
+        let userInstalled = root.appendingPathComponent("User Applications", isDirectory: true)
+        func makeApplication(_ url: URL, name: String, identifier: String) throws {
+            let contents = url.appendingPathComponent("Contents", isDirectory: true)
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            let info = ["CFBundleIdentifier": identifier, "CFBundlePackageType": "APPL", "CFBundleName": name,
+                        "CFBundleDisplayName": name, "CFBundleExecutable": "fixture"]
+            try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+                .write(to: contents.appendingPathComponent("Info.plist"))
+        }
+        let aiApp = installed.appendingPathComponent("AI #&?%+ 中文.app")
+        let editorApp = userInstalled.appendingPathComponent("Utilities/Editor.app")
+        let helperApp = aiApp.appendingPathComponent("Contents/Helpers/Hidden.app")
+        try makeApplication(aiApp, name: "本机 AI", identifier: "local.fixture.ai")
+        try makeApplication(editorApp, name: "Editor", identifier: "local.fixture.editor")
+        try makeApplication(helperApp, name: "Helper", identifier: "local.fixture.helper")
+        try makeApplication(installed.appendingPathComponent(".hidden/Hidden.app"), name: "Hidden", identifier: "local.fixture.hidden")
+        try FileManager.default.createDirectory(at: installed.appendingPathComponent("Invalid.app"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: installed.appendingPathComponent("Alias.app"), withDestinationURL: aiApp)
+        let discovered = ApplicationCatalog.scan(directories: [installed, userInstalled, installed, root.appendingPathComponent("not-installed")])
+        try check("installed app discovery includes nested and user apps with display names", discovered.count == 2 && Set(discovered.map(\.name)) == ["本机 AI", "Editor"])
+        try check("discovery deduplicates aliases and repeated roots", discovered.filter { $0.path == aiApp.resolvingSymlinksInPath().path }.count == 1)
+        try check("discovery hides bundled helpers invalid apps and hidden folders", !discovered.contains { ["Helper", "Hidden", "Invalid"].contains($0.name) })
+        try check("discovery ignores ordinary files and remote URLs", ApplicationCatalog.reference(at: file) == nil && ApplicationCatalog.reference(at: URL(string: "https://example.com/Fake.app")!) == nil)
+        let oldApps = try JSONSerialization.data(withJSONObject: ["applications": [["name": "旧应用", "path": aiApp.path]],
+            "chatGPTPath": "/Applications/Old.app", "analysisPrompt": "旧提示词", "disabledActions": ["chatGPT", "analyze", "terminal"]])
+        let migratedApps = try JSONDecoder().decode(AssistantConfiguration.self, from: oldApps)
+        try check("existing saved applications migrate as enabled without seeding a preferred AI", migratedApps.applications == [AppReference(name: "旧应用", path: aiApp.path)] && AssistantConfiguration().applications.isEmpty)
+        try check("removed AI switches migrate without changing unrelated switches", migratedApps.disabledActions == ["terminal"])
+        var savedApps = AssistantConfiguration()
+        savedApps.applications = discovered
+        savedApps.applications[0].enabled = false
+        let appSettings = root.appendingPathComponent("application-settings.json")
+        try JSONEncoder().encode(savedApps).write(to: appSettings, options: .atomic)
+        let reloadedApps = try JSONDecoder().decode(AssistantConfiguration.self, from: Data(contentsOf: appSettings))
+        try check("saved apps order names paths and individual switches survive restart", reloadedApps.applications == savedApps.applications)
+        let enabledApp = reloadedApps.applications[1]
+        try check("saved application resolves for generic opening", try ApplicationCatalog.configuredApplication(path: enabledApp.path, configuration: reloadedApps).path == enabledApp.path)
+        try rejects("disabled app cannot execute from a stale menu") { _ = try ApplicationCatalog.configuredApplication(path: reloadedApps.applications[0].path, configuration: reloadedApps) }
+        try rejects("unconfigured app cannot execute through a forged handoff") { _ = try ApplicationCatalog.configuredApplication(path: helperApp.path, configuration: reloadedApps) }
+        var disabledApps = reloadedApps; disabledApps.disabledActions.insert(MenuAction.otherApp.rawValue)
+        try rejects("master application switch also gates execution") { _ = try ApplicationCatalog.configuredApplication(path: enabledApp.path, configuration: disabledApps) }
+        let appOptions = try Handoff.decode(Handoff.url(action: .otherApp, selection: selection, options: ActionOptions(application: aiApp.path)))
+        try check("saved application and selection paths survive Finder handoff", appOptions.2.application == aiApp.path && appOptions.1 == selection)
+        try rejects("application cannot be attached to unrelated action") { _ = try Handoff.decode(Handoff.url(action: .deleteForever, selection: selection, options: ActionOptions(application: aiApp.path))) }
+        try rejects("duplicate application arguments are rejected") { _ = try Handoff.decode(URL(string: "rightclick-assistant://action/otherApp?item=/tmp/x&application=/Applications/A.app&application=/Applications/B.app")!) }
+        try FileManager.default.removeItem(at: URL(fileURLWithPath: enabledApp.path))
+        try rejects("uninstalled application reports failure instead of choosing another app") { _ = try ApplicationCatalog.configuredApplication(path: enabledApp.path, configuration: reloadedApps) }
+        try rejects("removed analyze action cannot execute") { _ = try Handoff.decode(URL(string: "rightclick-assistant://action/analyze?item=/tmp/x")!) }
 
         let source = root.appendingPathComponent("source"), destination = root.appendingPathComponent("destination")
         try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)

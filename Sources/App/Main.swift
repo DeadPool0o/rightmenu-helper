@@ -72,7 +72,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
             UserDefaults.standard.set(true, forKey: setupKey)
             let alert = NSAlert()
             alert.messageText = "还需要启用 Finder 扩展"
-            alert.informativeText = "安装后，请在系统设置中启用“右键助手”的 Finder 扩展，才能显示新建文件、复制移动、文件图标等右键菜单。\n\n“用 ChatGPT 打开（右键助手）”是单独的系统服务，出现这一项不代表 Finder 扩展已启用。"
+            alert.informativeText = "安装后，请在系统设置中启用“右键助手”的 Finder 扩展，才能显示新建文件、复制移动、打开方式等右键菜单。\n\n“打开方式（右键助手）”是单独的系统服务，出现这一项不代表 Finder 扩展已启用。"
             alert.addButton(withTitle: "打开 Finder 扩展设置")
             alert.addButton(withTitle: "稍后")
             if alert.runModal() == .alertFirstButtonReturn { openFinderExtensionSettings() }
@@ -105,12 +105,20 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         do { try configuration.save(); status("设置已保存") } catch { self.error(error) }
     }
     func refreshSettings() { settingsView?.refresh() }
-    func addApplication(_ url: URL) {
-        guard Bundle(url: url)?.bundleIdentifier != nil else { message("应用无效", "请选择 .app 应用包。"); return }
-        if !configuration.applications.contains(where: { $0.path == url.path }) {
-            configuration.applications.append(AppReference(name: url.deletingPathExtension().lastPathComponent, path: url.path))
-            persistSettings(); refreshSettings()
+    func addApplications(_ urls: [URL]) throws {
+        var updated = configuration
+        for url in urls {
+            guard let reference = ApplicationCatalog.reference(at: url) else {
+                throw AssistantError.message("应用无效或已移除，请选择本机已安装的 .app 应用。")
+            }
+            if let index = updated.applications.firstIndex(where: {
+                URL(fileURLWithPath: $0.path).resolvingSymlinksInPath().path == reference.path
+            }) {
+                updated.applications[index] = reference
+            } else { updated.applications.append(reference) }
         }
+        try updated.save()
+        configuration = updated; status("打开方式已保存"); refreshSettings()
     }
     private func buildWindow() {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
@@ -118,7 +126,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
                           backing: .buffered, defer: false)
         window.title = "右键助手设置"; window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        window.minSize = NSSize(width: 840, height: 570)
+        window.minSize = NSSize(width: 840, height: 640)
         window.delegate = self; window.isReleasedWhenClosed = false; window.center()
         settingsView = SettingsView(app: self)
         window.contentView = settingsView
@@ -138,11 +146,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.mainMenu = appMenu
     }
 
-    @objc func openInChatGPT(_ pasteboard: NSPasteboard, userData: String?, error errorPointer: AutoreleasingUnsafeMutablePointer<NSString?>) {
+    @objc func openWithApplication(_ pasteboard: NSPasteboard, userData: String?, error errorPointer: AutoreleasingUnsafeMutablePointer<NSString?>) {
         receivedHandoff = true
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ??
             (pasteboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String] ?? []).map { URL(fileURLWithPath: $0) }
-        do { let s = try Selection(urls: urls); runner.execute(.chatGPT, selection: s) }
+        do { let s = try Selection(urls: urls); runner.execute(.otherApp, selection: s) }
         catch { errorPointer.pointee = error.localizedDescription as NSString }
     }
     @objc func translateText(_ pb: NSPasteboard, userData: String?, error errorPointer: AutoreleasingUnsafeMutablePointer<NSString?>) {
