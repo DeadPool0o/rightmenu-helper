@@ -35,6 +35,10 @@ def verify_app(app):
         if binary.read_bytes() != (APP / relative).read_bytes():
             raise RuntimeError(f"Packaged executable differs from build: {relative}")
     info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+    for bundle in (app, app / "Contents/PlugIns/RightClickFinder.appex"):
+        bundle_info = plistlib.loads((bundle / "Contents/Info.plist").read_bytes())
+        if bundle_info.get("CFBundleDevelopmentRegion") != "zh-Hans" or "zh-Hans" not in bundle_info.get("CFBundleLocalizations", []):
+            raise RuntimeError(f"Simplified Chinese localization is missing: {bundle.name}")
     if not (app / "Contents/Resources" / info["CFBundleIconFile"]).is_file():
         raise RuntimeError("Application icon is missing")
     for name in ("Word.docx", "Excel.xlsx", "PowerPoint.pptx"):

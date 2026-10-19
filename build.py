@@ -27,7 +27,8 @@ for bundle in (app, ext):
 def plist(path, value):
     path.write_bytes(plistlib.dumps(value, sort_keys=False))
 
-base = {"CFBundleInfoDictionaryVersion": "6.0", "CFBundleVersion": "18", "CFBundleShortVersionString": "0.2.13",
+base = {"CFBundleInfoDictionaryVersion": "6.0", "CFBundleVersion": "19", "CFBundleShortVersionString": "0.2.14",
+        "CFBundleDevelopmentRegion": "zh-Hans", "CFBundleLocalizations": ["zh-Hans"],
         "LSMinimumSystemVersion": "13.0", "CFBundleSupportedPlatforms": ["MacOSX"], "LSUIElement": True}
 services = [{"NSMenuItem": {"default": "打开方式（右键助手）"}, "NSMessage": "openWithApplication",
              "NSPortName": "RightClickAssistant", "NSSendTypes": ["NSFilenamesPboardType", "public.file-url"],

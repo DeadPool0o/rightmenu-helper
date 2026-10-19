@@ -21,6 +21,9 @@ import ImageIO
         let selection = try Selection(urls: [file, file], directory: folder)
         try check("Finder menu tags resolve without representedObject", MenuAction.allCases.allSatisfy { MenuAction(menuTag: $0.menuTag) == $0 })
         try check("Finder menu rejects separator tag", MenuAction(menuTag: 0) == nil)
+        try check("all menu action icons exist in the running macOS symbol catalog", MenuAction.allCases.allSatisfy {
+            NSImage(systemSymbolName: $0.icon, accessibilityDescription: nil) != nil
+        })
         try check("selected folder is the working directory", try Selection(urls: [folder]).directory.path == folder.path)
         try check("selected file uses its containing directory", try Selection(urls: [file]).directory.path == folder.path)
         try check("background offers creation", MenuPolicy.allows(.newText, selected: []))

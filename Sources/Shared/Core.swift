@@ -83,7 +83,7 @@ enum MenuAction: String, CaseIterable, Codable {
     var icon: String {
         switch self {
         case .terminal: return "terminal"
-        case .moveTo: return "folder.badge.arrowshape.right"
+        case .moveTo: return "folder"
         case .copyTo: return "doc.on.doc"
         case .copyName: return "textformat"
         case .copyPath: return "link"
